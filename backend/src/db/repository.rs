@@ -332,6 +332,79 @@ impl CoreRepository {
         .await
     }
 
+    pub async fn update_instagram_account_token(
+        &self,
+        account_id: Uuid,
+        access_token_ciphertext: &str,
+        token_expires_at: DateTime<Utc>,
+    ) -> Result<InstagramAccount, sqlx::Error> {
+        sqlx::query_as::<_, InstagramAccount>(
+            r#"
+            UPDATE instagram_accounts
+            SET access_token_ciphertext = $2,
+                token_expires_at = $3,
+                connection_status = 'connected',
+                reconnect_reason = NULL,
+                disconnected_at = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING
+                id,
+                creator_id,
+                instagram_user_id,
+                username,
+                access_token_ciphertext,
+                refresh_token_ciphertext,
+                token_expires_at,
+                connection_status,
+                reconnect_reason,
+                connected_at,
+                disconnected_at,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(account_id)
+        .bind(access_token_ciphertext)
+        .bind(token_expires_at)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn mark_instagram_account_reconnect_needed(
+        &self,
+        account_id: Uuid,
+        reason: &str,
+    ) -> Result<InstagramAccount, sqlx::Error> {
+        sqlx::query_as::<_, InstagramAccount>(
+            r#"
+            UPDATE instagram_accounts
+            SET connection_status = 'reconnect-needed',
+                reconnect_reason = $2,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING
+                id,
+                creator_id,
+                instagram_user_id,
+                username,
+                access_token_ciphertext,
+                refresh_token_ciphertext,
+                token_expires_at,
+                connection_status,
+                reconnect_reason,
+                connected_at,
+                disconnected_at,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(account_id)
+        .bind(reason)
+        .fetch_one(&self.pool)
+        .await
+    }
+
     pub async fn create_instagram_oauth_state(
         &self,
         state: NewInstagramOAuthState<'_>,

@@ -56,7 +56,10 @@ pub struct InstagramConfig {
     pub redirect_uri: String,
     pub auth_url: String,
     pub token_url: String,
+    pub long_lived_token_url: String,
+    pub refresh_token_url: String,
     pub scopes: String,
+    pub credential_encryption_key: String,
 }
 
 #[derive(Clone)]
@@ -196,14 +199,20 @@ impl InstagramConfig {
         let redirect_uri = optional_env("INSTAGRAM_REDIRECT_URI");
         let auth_url = optional_env("INSTAGRAM_OAUTH_AUTH_URL");
         let token_url = optional_env("INSTAGRAM_OAUTH_TOKEN_URL");
+        let long_lived_token_url = optional_env("INSTAGRAM_LONG_LIVED_TOKEN_URL");
+        let refresh_token_url = optional_env("INSTAGRAM_REFRESH_TOKEN_URL");
         let scopes = optional_env("INSTAGRAM_OAUTH_SCOPES");
+        let credential_encryption_key = optional_env("CREDENTIAL_ENCRYPTION_KEY");
 
         let any_instagram_value = client_id.is_some()
             || client_secret.is_some()
             || redirect_uri.is_some()
             || auth_url.is_some()
             || token_url.is_some()
-            || scopes.is_some();
+            || long_lived_token_url.is_some()
+            || refresh_token_url.is_some()
+            || scopes.is_some()
+            || credential_encryption_key.is_some();
 
         if !any_instagram_value {
             return Ok(None);
@@ -218,6 +227,9 @@ impl InstagramConfig {
         }
         if redirect_uri.is_none() {
             missing.push("INSTAGRAM_REDIRECT_URI");
+        }
+        if credential_encryption_key.is_none() {
+            missing.push("CREDENTIAL_ENCRYPTION_KEY");
         }
 
         if !missing.is_empty() {
@@ -235,7 +247,12 @@ impl InstagramConfig {
                 .unwrap_or_else(|| "https://api.instagram.com/oauth/authorize".to_owned()),
             token_url: token_url
                 .unwrap_or_else(|| "https://api.instagram.com/oauth/access_token".to_owned()),
+            long_lived_token_url: long_lived_token_url
+                .unwrap_or_else(|| "https://graph.instagram.com/access_token".to_owned()),
+            refresh_token_url: refresh_token_url
+                .unwrap_or_else(|| "https://graph.instagram.com/refresh_access_token".to_owned()),
             scopes: scopes.unwrap_or_else(|| "instagram_business_basic".to_owned()),
+            credential_encryption_key: credential_encryption_key.unwrap_or_default(),
         }))
     }
 }

@@ -6,6 +6,7 @@ import {
   InstagramAccount,
   disconnectInstagram,
   fetchInstagramStatus,
+  refreshInstagramCredential,
 } from '../instagram/api';
 
 export function ConnectionsPage() {
@@ -74,7 +75,21 @@ export function ConnectionsPage() {
     }
   }
 
+  async function handleRefresh() {
+    setWorking(true);
+    setError(null);
+    try {
+      setAccount(await refreshInstagramCredential());
+      setNotice('Instagram authorization refreshed.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Instagram authorization could not be refreshed');
+    } finally {
+      setWorking(false);
+    }
+  }
+
   const connected = account?.connection_status === 'connected';
+  const hasAccount = Boolean(account);
   const displayName = account?.username ? `@${account.username}` : account?.instagram_user_id;
 
   return (
@@ -109,9 +124,20 @@ export function ConnectionsPage() {
                 href="/api/instagram/connect"
                 className="inline-flex items-center gap-2 rounded-md bg-meadow px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-meadow/90"
               >
-                {connected ? <RefreshCw size={17} aria-hidden="true" /> : <Link2 size={17} aria-hidden="true" />}
-                {connected ? 'Reconnect' : 'Connect'}
+                {hasAccount ? <RefreshCw size={17} aria-hidden="true" /> : <Link2 size={17} aria-hidden="true" />}
+                {hasAccount ? 'Reconnect' : 'Connect'}
               </a>
+              {connected ? (
+                <button
+                  type="button"
+                  onClick={() => void handleRefresh()}
+                  disabled={working}
+                  className="inline-flex items-center gap-2 rounded-md border border-ink/15 bg-white px-4 py-2.5 text-sm font-semibold text-ink/70 transition hover:text-ink disabled:cursor-not-allowed disabled:text-ink/35"
+                >
+                  <RefreshCw size={17} aria-hidden="true" />
+                  Refresh
+                </button>
+              ) : null}
               {account ? (
                 <button
                   type="button"
@@ -148,6 +174,10 @@ export function ConnectionsPage() {
               label="Connected"
               value={account ? formatDate(account.connected_at) : 'Unset'}
             />
+            <StatusRow
+              label="Authorization expires"
+              value={account?.token_expires_at ? formatDate(account.token_expires_at) : 'Unset'}
+            />
           </dl>
         </aside>
       </div>
@@ -163,7 +193,7 @@ function statusCopy(account: InstagramAccount | null, loading: boolean) {
     return 'Authorize an Instagram account owned by this creator.';
   }
   if (account.connection_status === 'connected') {
-    return 'This creator can use the connected Instagram account for upcoming publishing steps.';
+    return 'This creator can use the connected Instagram authorization for upcoming publishing steps.';
   }
   if (account.connection_status === 'reconnect-needed') {
     return account.reconnect_reason ?? 'This account needs to be reconnected.';
