@@ -54,6 +54,9 @@ pub struct InstagramConfig {
     pub client_id: String,
     pub client_secret: String,
     pub redirect_uri: String,
+    pub auth_url: String,
+    pub token_url: String,
+    pub scopes: String,
 }
 
 #[derive(Clone)]
@@ -188,22 +191,51 @@ impl ObjectStorageConfig {
 
 impl InstagramConfig {
     fn from_env() -> Result<Option<Self>, ConfigError> {
-        let Some(values) = optional_group(
-            "Instagram app",
-            &[
-                "INSTAGRAM_CLIENT_ID",
-                "INSTAGRAM_CLIENT_SECRET",
-                "INSTAGRAM_REDIRECT_URI",
-            ],
-        )?
-        else {
+        let client_id = optional_env("INSTAGRAM_CLIENT_ID");
+        let client_secret = optional_env("INSTAGRAM_CLIENT_SECRET");
+        let redirect_uri = optional_env("INSTAGRAM_REDIRECT_URI");
+        let auth_url = optional_env("INSTAGRAM_OAUTH_AUTH_URL");
+        let token_url = optional_env("INSTAGRAM_OAUTH_TOKEN_URL");
+        let scopes = optional_env("INSTAGRAM_OAUTH_SCOPES");
+
+        let any_instagram_value = client_id.is_some()
+            || client_secret.is_some()
+            || redirect_uri.is_some()
+            || auth_url.is_some()
+            || token_url.is_some()
+            || scopes.is_some();
+
+        if !any_instagram_value {
             return Ok(None);
+        }
+
+        let mut missing = Vec::new();
+        if client_id.is_none() {
+            missing.push("INSTAGRAM_CLIENT_ID");
+        }
+        if client_secret.is_none() {
+            missing.push("INSTAGRAM_CLIENT_SECRET");
+        }
+        if redirect_uri.is_none() {
+            missing.push("INSTAGRAM_REDIRECT_URI");
+        }
+
+        if !missing.is_empty() {
+            return Err(ConfigError::IncompleteGroup {
+                group: "Instagram app",
+                missing,
+            });
         };
 
         Ok(Some(Self {
-            client_id: values[0].clone(),
-            client_secret: values[1].clone(),
-            redirect_uri: values[2].clone(),
+            client_id: client_id.unwrap_or_default(),
+            client_secret: client_secret.unwrap_or_default(),
+            redirect_uri: redirect_uri.unwrap_or_default(),
+            auth_url: auth_url
+                .unwrap_or_else(|| "https://api.instagram.com/oauth/authorize".to_owned()),
+            token_url: token_url
+                .unwrap_or_else(|| "https://api.instagram.com/oauth/access_token".to_owned()),
+            scopes: scopes.unwrap_or_else(|| "instagram_business_basic".to_owned()),
         }))
     }
 }

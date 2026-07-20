@@ -6,6 +6,7 @@ import { AppLayout } from './app/AppLayout';
 import { AuthGate } from './auth/AuthGate';
 import { AuthProvider } from './auth/AuthProvider';
 import { OverviewPage } from './pages/OverviewPage';
+import { ConnectionsPage } from './pages/ConnectionsPage';
 import { QueuePage } from './pages/QueuePage';
 import { SettingsPage } from './pages/SettingsPage';
 import './styles.css';
@@ -19,6 +20,7 @@ const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <OverviewPage /> },
+          { path: 'connections', element: <ConnectionsPage /> },
           { path: 'queue', element: <QueuePage /> },
           { path: 'settings', element: <SettingsPage /> },
         ],

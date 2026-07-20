@@ -2,6 +2,7 @@ pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod instagram;
 pub mod routes;
 pub mod settings;
 
@@ -42,7 +43,9 @@ pub fn build_app(state: AppState) -> Router {
 
     Router::new()
         .nest("/api", routes::api_router())
-        .fallback_service(ServeDir::new(frontend_dist).not_found_service(ServeFile::new(index_file)))
+        .fallback_service(
+            ServeDir::new(frontend_dist).not_found_service(ServeFile::new(index_file)),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
