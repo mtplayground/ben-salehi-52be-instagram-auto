@@ -3,6 +3,7 @@ pub mod config;
 pub mod credentials;
 pub mod db;
 pub mod error;
+pub mod generation;
 pub mod instagram;
 pub mod routes;
 pub mod settings;
