@@ -4,6 +4,7 @@ export interface InstagramAccount {
   username: string | null;
   connection_status: 'connected' | 'reconnect-needed' | 'disconnected';
   reconnect_reason: string | null;
+  token_expires_at: string | null;
   connected_at: string;
   disconnected_at: string | null;
 }
@@ -35,6 +36,21 @@ export async function disconnectInstagram(): Promise<InstagramAccount | null> {
 
   if (!response.ok) {
     throw new Error(body.error ?? `Instagram disconnect failed: ${response.status}`);
+  }
+
+  return body.account;
+}
+
+export async function refreshInstagramCredential(): Promise<InstagramAccount | null> {
+  const response = await fetch('/api/instagram/refresh', {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  const body = (await response.json()) as InstagramStatusResponse & { error?: string };
+
+  if (!response.ok) {
+    throw new Error(body.error ?? `Instagram refresh failed: ${response.status}`);
   }
 
   return body.account;
