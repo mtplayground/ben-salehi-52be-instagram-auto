@@ -4,8 +4,8 @@ use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use super::models::{
-    Creator, GeneratedPost, InstagramAccount, MediaAsset, PostQueueEntry, PostStatus, User,
-    PostingSchedule,
+    ContentSettings, Creator, GeneratedPost, InstagramAccount, MediaAsset, PostQueueEntry,
+    PostStatus, PostingSchedule, User,
 };
 
 #[derive(Clone)]
@@ -72,6 +72,13 @@ pub struct NewPostQueueEntry {
     pub post_id: Uuid,
     pub scheduled_for: DateTime<Utc>,
     pub queue_position: i32,
+}
+
+#[derive(Clone, Debug)]
+pub struct NewContentSettings<'a> {
+    pub creator_id: Uuid,
+    pub theme_topic: &'a str,
+    pub style_notes: &'a str,
 }
 
 #[derive(Clone, Debug)]
@@ -233,6 +240,56 @@ impl CoreRepository {
         .bind(account.access_token_ciphertext)
         .bind(account.refresh_token_ciphertext)
         .bind(account.token_expires_at)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn get_content_settings(
+        &self,
+        creator_id: Uuid,
+    ) -> Result<Option<ContentSettings>, sqlx::Error> {
+        sqlx::query_as::<_, ContentSettings>(
+            r#"
+            SELECT
+                id,
+                creator_id,
+                theme_topic,
+                style_notes,
+                created_at,
+                updated_at
+            FROM creator_content_settings
+            WHERE creator_id = $1
+            "#,
+        )
+        .bind(creator_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn upsert_content_settings(
+        &self,
+        settings: NewContentSettings<'_>,
+    ) -> Result<ContentSettings, sqlx::Error> {
+        sqlx::query_as::<_, ContentSettings>(
+            r#"
+            INSERT INTO creator_content_settings (creator_id, theme_topic, style_notes)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (creator_id) DO UPDATE
+            SET theme_topic = EXCLUDED.theme_topic,
+                style_notes = EXCLUDED.style_notes,
+                updated_at = NOW()
+            RETURNING
+                id,
+                creator_id,
+                theme_topic,
+                style_notes,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(settings.creator_id)
+        .bind(settings.theme_topic)
+        .bind(settings.style_notes)
         .fetch_one(&self.pool)
         .await
     }

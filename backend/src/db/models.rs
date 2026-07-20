@@ -28,6 +28,16 @@ pub struct Creator {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
+pub struct ContentSettings {
+    pub id: Uuid,
+    pub creator_id: Uuid,
+    pub theme_topic: String,
+    pub style_notes: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
 pub struct InstagramAccount {
     pub id: Uuid,
     pub creator_id: Uuid,
