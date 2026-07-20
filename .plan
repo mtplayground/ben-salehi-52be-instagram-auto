@@ -1,0 +1,48 @@
+Architecture plan
+
+Product scope
+- Creator-facing Instagram post automation app. The issues do not specify a public product brand/name, so code and UI should use neutral app wording until an issue provides one.
+- Stack from Issue #1: React + Tailwind frontend, Rust/Axum backend.
+- Runtime: deployed behind the Ideavibes reverse proxy; backend origin logic must trust forwarded headers and prefer X-Forwarded-Host / X-Forwarded-Proto or ALLOWED_CORS_ORIGIN over raw Host.
+
+Module structure
+- /frontend
+  - React application, Tailwind setup, routing, signed-in layout, auth state, settings pages, onboarding flow, queue/calendar views, review controls, and status/error UI.
+  - Suggested groups: src/app, src/auth, src/settings, src/connections, src/queue, src/components, src/api.
+- /backend
+  - Axum service entrypoint, route modules, config, auth/session middleware, database access, job runners, provider clients, and shared API DTOs.
+  - Suggested groups: src/main.rs, src/config.rs, src/auth, src/routes, src/db, src/models, src/jobs, src/services, src/providers.
+- /migrations
+  - SQL migrations for creators, sessions/accounts, Instagram connections, content settings, posting schedules, media assets, posts, queue/publish attempts.
+- /shared or backend/src/api_types
+  - Request/response DTOs and enums used across route boundaries. If practical, generate TypeScript client types from backend OpenAPI/schema definitions rather than duplicating shapes by hand.
+- /tests
+  - Backend integration tests plus end-to-end browser/API flow tests once the full pipeline exists.
+
+Core data model outline
+- creators: creator identity, platform auth subject, display fields, timestamps.
+- content_settings: creator_id, theme/topic, style/tone preferences, generation defaults.
+- instagram_connections: creator_id, Instagram account identifiers, encrypted access/refresh tokens, expiry, status, reconnect metadata.
+- posting_schedules: creator_id, frequency/rules, timezone, next run metadata, review mode flag or related setting.
+- media_assets: creator_id, storage key/url, dimensions, mime type, source provider, license/source metadata.
+- posts: creator_id, media_asset_id, header_text, paragraph_text, caption, scheduled_at, status, failure summary, timestamps.
+- publish_attempts: post_id, attempted_at, provider response/status, retry count, error classification.
+
+Issue dependency path
+- Foundation: #1 project skeleton, #2 data models, #3 environment configuration.
+- Account and creator setup: #4 auth, #5 content settings, #13 schedule settings, #16 review mode toggle.
+- Instagram connection: #6 OAuth connection flow, #7 credential storage/refresh.
+- Generation pipeline: #8 illustrated images, #9 royalty-free stock fallback, #10 text overlay compositing, #11 object storage, #12 captions.
+- Queue orchestration: #14 scheduled pre-generation worker, #15 queue/calendar view, #17 review controls.
+- Publishing: #18 scheduled Instagram publishing, #19 status/failure handling and retries.
+- Verification and polish: #20 end-to-end pipeline test, #21 error handling, empty states, legibility, and per-creator isolation review.
+
+Key design decisions
+- Treat creator_id as the first-class tenant boundary in every table, query, storage key, job, and API route. Add tests for cross-creator isolation before broad feature work.
+- Keep provider integrations behind service traits/interfaces: image generation, stock image search, object storage, caption generation, Instagram OAuth, and Instagram publish. This keeps early issues testable with fake providers and later credentials isolated.
+- Use a status enum for post lifecycle: draft, pending_review, approved, scheduled, published, failed, rejected. Persist publish attempts separately so retries and failure history do not overwrite the post record.
+- Generate posts ahead of scheduled slots. The worker should fill a configurable horizon and avoid duplicate scheduled posts with unique constraints on creator_id + scheduled_at where appropriate.
+- Store finished composited images, not only source prompts. Publishing and previews should reference immutable media assets.
+- Make review mode a creator setting that changes status transitions: review-on creates pending_review posts; review-off creates approved/scheduled posts eligible for automatic publishing.
+- Route all secrets/config through environment variables and document them in .env.example. Never commit local .env, tokens, database URLs, or object storage credentials.
+- Prefer strict but proxy-aware origin handling: compare against ALLOWED_CORS_ORIGIN or forwarded public host, and do not gate static assets on raw Host.
