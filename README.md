@@ -10,6 +10,12 @@ Creator-facing web application skeleton for planning, reviewing, and publishing 
 
 ## Development
 
+Copy the environment template and fill in local values:
+
+```bash
+cp .env.example .env
+```
+
 Install frontend dependencies:
 
 ```bash
@@ -19,6 +25,7 @@ npm install
 Run the backend on `0.0.0.0:8080`:
 
 ```bash
+export DATABASE_URL=...
 cargo run -p instagram-auto-backend
 ```
 
