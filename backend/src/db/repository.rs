@@ -703,6 +703,31 @@ impl CoreRepository {
         .await
     }
 
+    pub async fn get_posting_schedule(
+        &self,
+        creator_id: Uuid,
+    ) -> Result<Option<PostingSchedule>, sqlx::Error> {
+        sqlx::query_as::<_, PostingSchedule>(
+            r#"
+            SELECT
+                id,
+                creator_id,
+                timezone,
+                cadence,
+                schedule_rule,
+                is_active,
+                next_run_at,
+                created_at,
+                updated_at
+            FROM posting_schedules
+            WHERE creator_id = $1
+            "#,
+        )
+        .bind(creator_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn enqueue_post(
         &self,
         entry: NewPostQueueEntry,
