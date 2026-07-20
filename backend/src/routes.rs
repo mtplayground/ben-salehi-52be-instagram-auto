@@ -2,7 +2,7 @@ use axum::{routing::get, Json, Router};
 use serde::Serialize;
 
 use crate::{
-    auth, compositor, error::AppError, generation, instagram, settings, stock, AppState,
+    auth, compositor, error::AppError, generation, instagram, settings, stock, storage, AppState,
 };
 
 #[derive(Serialize)]
@@ -19,6 +19,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/instagram", instagram::routes())
         .nest("/settings", settings::routes())
         .nest("/stock", stock::routes())
+        .nest("/media", storage::routes())
         .route("/health", get(health))
         .fallback(api_not_found)
 }
