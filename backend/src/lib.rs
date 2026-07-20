@@ -6,6 +6,7 @@ pub mod db;
 pub mod error;
 pub mod generation;
 pub mod instagram;
+pub mod pipeline_worker;
 pub mod routes;
 pub mod schedule;
 pub mod settings;

@@ -5,6 +5,7 @@ use instagram_auto_backend::{
     build_app,
     config::AppConfig,
     db::{connect, repository::CoreRepository, run_migrations},
+    pipeline_worker,
     AppState,
 };
 use tokio::net::TcpListener;
@@ -27,6 +28,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     run_migrations(&pool).await?;
     let repository = CoreRepository::new(pool);
     let state = AppState::new(config, repository)?;
+    let _pipeline_worker = pipeline_worker::spawn_pipeline_worker(state.clone());
     let app = build_app(state);
     serve(app, addr).await
 }

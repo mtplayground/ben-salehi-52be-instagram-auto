@@ -728,6 +728,89 @@ impl CoreRepository {
         .await
     }
 
+    pub async fn list_posting_schedules_ready_for_build(
+        &self,
+        horizon: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<PostingSchedule>, sqlx::Error> {
+        sqlx::query_as::<_, PostingSchedule>(
+            r#"
+            SELECT
+                id,
+                creator_id,
+                timezone,
+                cadence,
+                schedule_rule,
+                is_active,
+                next_run_at,
+                created_at,
+                updated_at
+            FROM posting_schedules
+            WHERE is_active = TRUE
+              AND next_run_at IS NOT NULL
+              AND next_run_at <= $1
+            ORDER BY next_run_at ASC
+            LIMIT $2
+            "#,
+        )
+        .bind(horizon)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn queue_slot_exists(
+        &self,
+        creator_id: Uuid,
+        scheduled_for: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM post_queue_entries
+                WHERE creator_id = $1
+                  AND scheduled_for = $2
+            )
+            "#,
+        )
+        .bind(creator_id)
+        .bind(scheduled_for)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(exists)
+    }
+
+    pub async fn update_posting_schedule_next_run(
+        &self,
+        schedule_id: Uuid,
+        next_run_at: Option<DateTime<Utc>>,
+    ) -> Result<PostingSchedule, sqlx::Error> {
+        sqlx::query_as::<_, PostingSchedule>(
+            r#"
+            UPDATE posting_schedules
+            SET next_run_at = $2,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING
+                id,
+                creator_id,
+                timezone,
+                cadence,
+                schedule_rule,
+                is_active,
+                next_run_at,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(schedule_id)
+        .bind(next_run_at)
+        .fetch_one(&self.pool)
+        .await
+    }
+
     pub async fn enqueue_post(
         &self,
         entry: NewPostQueueEntry,
