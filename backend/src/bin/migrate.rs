@@ -1,4 +1,7 @@
-use instagram_auto_backend::db::{connect_from_env, run_migrations};
+use instagram_auto_backend::{
+    config::AppConfig,
+    db::{connect, run_migrations},
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
@@ -12,7 +15,8 @@ async fn main() {
 }
 
 async fn migrate() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let pool = connect_from_env().await?;
+    let config = AppConfig::from_env()?;
+    let pool = connect(&config.database).await?;
     run_migrations(&pool).await?;
     tracing::info!("database migrations applied");
     Ok(())
