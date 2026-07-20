@@ -4,8 +4,8 @@ use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use super::models::{
-    ContentSettings, Creator, GeneratedPost, InstagramAccount, MediaAsset, PostQueueEntry,
-    PostStatus, PostingSchedule, User,
+    ContentSettings, Creator, GeneratedPost, InstagramAccount, InstagramOAuthState, MediaAsset,
+    PostQueueEntry, PostStatus, PostingSchedule, User,
 };
 
 #[derive(Clone)]
@@ -29,6 +29,14 @@ pub struct NewInstagramAccount<'a> {
     pub access_token_ciphertext: Option<&'a str>,
     pub refresh_token_ciphertext: Option<&'a str>,
     pub token_expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct NewInstagramOAuthState<'a> {
+    pub creator_id: Uuid,
+    pub state: &'a str,
+    pub return_path: &'a str,
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug)]
@@ -211,11 +219,21 @@ impl CoreRepository {
             VALUES ($1, $2, $3, $4, $5, $6, 'connected', NOW())
             ON CONFLICT (creator_id, instagram_user_id) DO UPDATE
             SET username = EXCLUDED.username,
-                access_token_ciphertext = EXCLUDED.access_token_ciphertext,
-                refresh_token_ciphertext = EXCLUDED.refresh_token_ciphertext,
-                token_expires_at = EXCLUDED.token_expires_at,
+                access_token_ciphertext = COALESCE(
+                    EXCLUDED.access_token_ciphertext,
+                    instagram_accounts.access_token_ciphertext
+                ),
+                refresh_token_ciphertext = COALESCE(
+                    EXCLUDED.refresh_token_ciphertext,
+                    instagram_accounts.refresh_token_ciphertext
+                ),
+                token_expires_at = COALESCE(
+                    EXCLUDED.token_expires_at,
+                    instagram_accounts.token_expires_at
+                ),
                 connection_status = 'connected',
                 reconnect_reason = NULL,
+                connected_at = NOW(),
                 disconnected_at = NULL,
                 updated_at = NOW()
             RETURNING
@@ -241,6 +259,117 @@ impl CoreRepository {
         .bind(account.refresh_token_ciphertext)
         .bind(account.token_expires_at)
         .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn get_instagram_account_for_creator(
+        &self,
+        creator_id: Uuid,
+    ) -> Result<Option<InstagramAccount>, sqlx::Error> {
+        sqlx::query_as::<_, InstagramAccount>(
+            r#"
+            SELECT
+                id,
+                creator_id,
+                instagram_user_id,
+                username,
+                access_token_ciphertext,
+                refresh_token_ciphertext,
+                token_expires_at,
+                connection_status,
+                reconnect_reason,
+                connected_at,
+                disconnected_at,
+                created_at,
+                updated_at
+            FROM instagram_accounts
+            WHERE creator_id = $1
+            ORDER BY
+                CASE connection_status
+                    WHEN 'connected' THEN 0
+                    WHEN 'reconnect-needed' THEN 1
+                    ELSE 2
+                END,
+                updated_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(creator_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn disconnect_instagram_accounts(
+        &self,
+        creator_id: Uuid,
+    ) -> Result<Option<InstagramAccount>, sqlx::Error> {
+        sqlx::query_as::<_, InstagramAccount>(
+            r#"
+            UPDATE instagram_accounts
+            SET connection_status = 'disconnected',
+                disconnected_at = NOW(),
+                updated_at = NOW()
+            WHERE creator_id = $1
+              AND connection_status <> 'disconnected'
+            RETURNING
+                id,
+                creator_id,
+                instagram_user_id,
+                username,
+                access_token_ciphertext,
+                refresh_token_ciphertext,
+                token_expires_at,
+                connection_status,
+                reconnect_reason,
+                connected_at,
+                disconnected_at,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(creator_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn create_instagram_oauth_state(
+        &self,
+        state: NewInstagramOAuthState<'_>,
+    ) -> Result<InstagramOAuthState, sqlx::Error> {
+        sqlx::query_as::<_, InstagramOAuthState>(
+            r#"
+            INSERT INTO instagram_oauth_states (creator_id, state, return_path, expires_at)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, creator_id, state, return_path, expires_at, used_at, created_at
+            "#,
+        )
+        .bind(state.creator_id)
+        .bind(state.state)
+        .bind(state.return_path)
+        .bind(state.expires_at)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn consume_instagram_oauth_state(
+        &self,
+        creator_id: Uuid,
+        state: &str,
+    ) -> Result<Option<InstagramOAuthState>, sqlx::Error> {
+        sqlx::query_as::<_, InstagramOAuthState>(
+            r#"
+            UPDATE instagram_oauth_states
+            SET used_at = NOW()
+            WHERE creator_id = $1
+              AND state = $2
+              AND used_at IS NULL
+              AND expires_at > NOW()
+            RETURNING id, creator_id, state, return_path, expires_at, used_at, created_at
+            "#,
+        )
+        .bind(creator_id)
+        .bind(state)
+        .fetch_optional(&self.pool)
         .await
     }
 

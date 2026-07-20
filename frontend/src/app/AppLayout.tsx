@@ -1,10 +1,11 @@
-import { CalendarDays, Home, LogOut, Settings, Sparkles } from 'lucide-react';
+import { CalendarDays, Home, Instagram, LogOut, Settings, Sparkles } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 
 const navItems = [
   { to: '/', label: 'Overview', icon: Home },
+  { to: '/connections', label: 'Instagram', icon: Instagram },
   { to: '/queue', label: 'Queue', icon: CalendarDays },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -77,7 +78,7 @@ export function AppLayout() {
               <LogOut size={17} aria-hidden="true" />
             </button>
           </div>
-          <nav className="mt-3 grid grid-cols-3 gap-2" aria-label="Primary">
+          <nav className="mt-3 grid grid-cols-4 gap-2" aria-label="Primary">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}

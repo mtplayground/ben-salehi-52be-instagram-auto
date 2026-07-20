@@ -55,6 +55,17 @@ pub struct InstagramAccount {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
+pub struct InstagramOAuthState {
+    pub id: Uuid,
+    pub creator_id: Uuid,
+    pub state: String,
+    pub return_path: String,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
 pub struct MediaAsset {
     pub id: Uuid,
     pub creator_id: Uuid,
