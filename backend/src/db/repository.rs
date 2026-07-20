@@ -113,6 +113,7 @@ pub struct NewContentSettings<'a> {
     pub creator_id: Uuid,
     pub theme_topic: &'a str,
     pub style_notes: &'a str,
+    pub review_mode_enabled: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -483,6 +484,7 @@ impl CoreRepository {
                 creator_id,
                 theme_topic,
                 style_notes,
+                review_mode_enabled,
                 created_at,
                 updated_at
             FROM creator_content_settings
@@ -500,17 +502,24 @@ impl CoreRepository {
     ) -> Result<ContentSettings, sqlx::Error> {
         sqlx::query_as::<_, ContentSettings>(
             r#"
-            INSERT INTO creator_content_settings (creator_id, theme_topic, style_notes)
-            VALUES ($1, $2, $3)
+            INSERT INTO creator_content_settings (
+                creator_id,
+                theme_topic,
+                style_notes,
+                review_mode_enabled
+            )
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (creator_id) DO UPDATE
             SET theme_topic = EXCLUDED.theme_topic,
                 style_notes = EXCLUDED.style_notes,
+                review_mode_enabled = EXCLUDED.review_mode_enabled,
                 updated_at = NOW()
             RETURNING
                 id,
                 creator_id,
                 theme_topic,
                 style_notes,
+                review_mode_enabled,
                 created_at,
                 updated_at
             "#,
@@ -518,6 +527,7 @@ impl CoreRepository {
         .bind(settings.creator_id)
         .bind(settings.theme_topic)
         .bind(settings.style_notes)
+        .bind(settings.review_mode_enabled)
         .fetch_one(&self.pool)
         .await
     }

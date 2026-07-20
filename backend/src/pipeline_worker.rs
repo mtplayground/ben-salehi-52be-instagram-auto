@@ -177,6 +177,11 @@ async fn build_scheduled_post(
         .get_content_settings(schedule.creator_id)
         .await?
         .ok_or(PipelineError::MissingContentSettings)?;
+    let post_status = if settings.review_mode_enabled {
+        PostStatus::PendingReview
+    } else {
+        PostStatus::Scheduled
+    };
     let copy = build_post_copy(&settings, scheduled_for);
     let prepared_image = prepare_image(state, schedule.creator_id, &copy.subject_hint).await?;
     let caption = generate_casual_caption_for_creator(
@@ -211,7 +216,7 @@ async fn build_scheduled_post(
             header_text: &copy.header,
             paragraph_text: &copy.paragraph,
             caption: &caption.caption,
-            status: PostStatus::Scheduled,
+            status: post_status,
             scheduled_at: Some(scheduled_for),
         })
         .await?;

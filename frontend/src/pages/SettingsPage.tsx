@@ -1,4 +1,4 @@
-import { CalendarClock, Save, SlidersHorizontal } from "lucide-react";
+import { CalendarClock, Save, ShieldCheck, SlidersHorizontal, Zap } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
@@ -13,6 +13,7 @@ import {
 const emptyForm = {
   theme_topic: "",
   style_notes: "",
+  review_mode_enabled: true,
 };
 
 const weekdayOptions = [
@@ -123,7 +124,12 @@ export function SettingsPage() {
   const isDirty = useMemo(() => {
     const savedTheme = saved?.theme_topic ?? "";
     const savedStyle = saved?.style_notes ?? "";
-    return form.theme_topic !== savedTheme || form.style_notes !== savedStyle;
+    const savedReviewMode = saved?.review_mode_enabled ?? true;
+    return (
+      form.theme_topic !== savedTheme ||
+      form.style_notes !== savedStyle ||
+      form.review_mode_enabled !== savedReviewMode
+    );
   }, [form, saved]);
 
   const isScheduleDirty = useMemo(() => {
@@ -153,6 +159,7 @@ export function SettingsPage() {
       setForm({
         theme_topic: settings.theme_topic,
         style_notes: settings.style_notes,
+        review_mode_enabled: settings.review_mode_enabled,
       });
       setNotice("Content settings saved.");
     } catch (caught) {
@@ -290,6 +297,45 @@ export function SettingsPage() {
                 />
               </div>
 
+              <div className="rounded-lg border border-ink/10 bg-paper p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-meadow/12 text-meadow">
+                      {form.review_mode_enabled ? (
+                        <ShieldCheck size={20} aria-hidden="true" />
+                      ) : (
+                        <Zap size={20} aria-hidden="true" />
+                      )}
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink">
+                        Publishing mode
+                      </h3>
+                      <p className="mt-1 text-sm leading-6 text-ink/65">
+                        {form.review_mode_enabled
+                          ? "Review before posting keeps generated posts pending until they are approved."
+                          : "Auto-publish lets approved scheduled posts move forward without manual review."}
+                      </p>
+                    </div>
+                  </div>
+                  <label className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-ink">
+                    <input
+                      type="checkbox"
+                      checked={form.review_mode_enabled}
+                      disabled={contentDisabled}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          review_mode_enabled: event.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-ink/20 text-meadow focus:ring-meadow"
+                    />
+                    Review before posting
+                  </label>
+                </div>
+              </div>
+
               {error ? (
                 <div className="rounded-md border border-coral/30 bg-coral/10 px-3 py-2 text-sm text-ink">
                   {error}
@@ -326,6 +372,10 @@ export function SettingsPage() {
           <dl className="mt-5 space-y-4">
             <PreviewRow label="Theme" value={form.theme_topic || "Unset"} />
             <PreviewRow label="Style" value={form.style_notes || "Unset"} />
+            <PreviewRow
+              label="Publishing"
+              value={form.review_mode_enabled ? "Review before posting" : "Auto-publish"}
+            />
           </dl>
         </aside>
       </div>
@@ -549,6 +599,7 @@ function contentSettingsToForm(settings: ContentSettings) {
   return {
     theme_topic: settings.theme_topic,
     style_notes: settings.style_notes,
+    review_mode_enabled: settings.review_mode_enabled,
   };
 }
 

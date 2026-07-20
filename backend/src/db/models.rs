@@ -33,6 +33,7 @@ pub struct ContentSettings {
     pub creator_id: Uuid,
     pub theme_topic: String,
     pub style_notes: String,
+    pub review_mode_enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
