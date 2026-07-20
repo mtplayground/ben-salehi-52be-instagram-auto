@@ -34,3 +34,10 @@ Build everything:
 npm run build --workspace frontend
 cargo build
 ```
+
+Apply PostgreSQL migrations:
+
+```bash
+export DATABASE_URL=...
+cargo run -p instagram-auto-backend --bin migrate
+```
