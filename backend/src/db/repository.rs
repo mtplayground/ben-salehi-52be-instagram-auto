@@ -82,6 +82,32 @@ pub struct NewPostQueueEntry {
     pub queue_position: i32,
 }
 
+#[derive(Clone, Debug, sqlx::FromRow)]
+pub struct QueueCalendarPost {
+    pub post_id: Uuid,
+    pub queue_id: Option<Uuid>,
+    pub media_asset_id: Option<Uuid>,
+    pub image_url: Option<String>,
+    pub image_source: Option<String>,
+    pub image_license: Option<String>,
+    pub image_width: Option<i32>,
+    pub image_height: Option<i32>,
+    pub image_mime_type: Option<String>,
+    pub image_reference: Option<String>,
+    pub header_text: String,
+    pub paragraph_text: String,
+    pub caption: String,
+    pub status: PostStatus,
+    pub scheduled_at: Option<DateTime<Utc>>,
+    pub scheduled_for: Option<DateTime<Utc>>,
+    pub published_at: Option<DateTime<Utc>>,
+    pub failed_at: Option<DateTime<Utc>>,
+    pub failure_message: Option<String>,
+    pub queue_position: Option<i32>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Clone, Debug)]
 pub struct NewContentSettings<'a> {
     pub creator_id: Uuid,
@@ -839,6 +865,54 @@ impl CoreRepository {
             FROM post_queue_entries
             WHERE creator_id = $1
             ORDER BY scheduled_for ASC, queue_position ASC
+            "#,
+        )
+        .bind(creator_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn list_calendar_posts_for_creator(
+        &self,
+        creator_id: Uuid,
+    ) -> Result<Vec<QueueCalendarPost>, sqlx::Error> {
+        sqlx::query_as::<_, QueueCalendarPost>(
+            r#"
+            SELECT
+                posts.id AS post_id,
+                queue.id AS queue_id,
+                media.id AS media_asset_id,
+                media.public_url AS image_url,
+                media.source AS image_source,
+                media.license AS image_license,
+                media.width AS image_width,
+                media.height AS image_height,
+                media.mime_type AS image_mime_type,
+                posts.image_reference,
+                posts.header_text,
+                posts.paragraph_text,
+                posts.caption,
+                posts.status,
+                posts.scheduled_at,
+                queue.scheduled_for,
+                posts.published_at,
+                posts.failed_at,
+                posts.failure_message,
+                queue.queue_position,
+                posts.created_at,
+                posts.updated_at
+            FROM generated_posts posts
+            LEFT JOIN post_queue_entries queue
+                ON queue.post_id = posts.id
+               AND queue.creator_id = posts.creator_id
+            LEFT JOIN media_assets media
+                ON media.id = posts.media_asset_id
+               AND media.creator_id = posts.creator_id
+            WHERE posts.creator_id = $1
+            ORDER BY
+                COALESCE(queue.scheduled_for, posts.scheduled_at, posts.published_at, posts.created_at) ASC,
+                queue.queue_position ASC NULLS LAST,
+                posts.created_at ASC
             "#,
         )
         .bind(creator_id)
