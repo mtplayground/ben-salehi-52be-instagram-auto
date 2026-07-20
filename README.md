@@ -1,2 +1,36 @@
-# ben-salehi-52be-instagram-auto
-Managed Creator playground.
+# Instagram post automation app
+
+Creator-facing web application skeleton for planning, reviewing, and publishing Instagram posts.
+
+## Stack
+
+- Frontend: React, Vite, TypeScript, Tailwind CSS
+- Backend: Rust, Axum, Tokio
+- Persistent state: PostgreSQL in later data-model work
+
+## Development
+
+Install frontend dependencies:
+
+```bash
+npm install
+```
+
+Run the backend on `0.0.0.0:8080`:
+
+```bash
+cargo run -p instagram-auto-backend
+```
+
+Run the frontend dev server:
+
+```bash
+npm run dev --workspace frontend
+```
+
+Build everything:
+
+```bash
+npm run build --workspace frontend
+cargo build
+```
