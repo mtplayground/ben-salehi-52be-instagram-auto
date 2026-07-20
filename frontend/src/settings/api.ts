@@ -3,6 +3,7 @@ export interface ContentSettings {
   creator_id: string;
   theme_topic: string;
   style_notes: string;
+  review_mode_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +45,7 @@ export async function fetchContentSettings(): Promise<ContentSettings | null> {
 export async function saveContentSettings(input: {
   theme_topic: string;
   style_notes: string;
+  review_mode_enabled: boolean;
 }): Promise<ContentSettings> {
   const response = await fetch("/api/settings/content", {
     method: "PUT",

@@ -24,6 +24,7 @@ struct ContentSettingsPayload {
     creator_id: Uuid,
     theme_topic: String,
     style_notes: String,
+    review_mode_enabled: bool,
     created_at: String,
     updated_at: String,
 }
@@ -37,6 +38,8 @@ struct ContentSettingsResponse {
 struct SaveContentSettingsRequest {
     theme_topic: String,
     style_notes: String,
+    #[serde(default = "default_review_mode_enabled")]
+    review_mode_enabled: bool,
 }
 
 #[derive(Debug, Error)]
@@ -80,6 +83,7 @@ async fn save_content(
             creator_id: creator.creator.id,
             theme_topic: &request.theme_topic,
             style_notes: &request.style_notes,
+            review_mode_enabled: request.review_mode_enabled,
         })
         .await?;
 
@@ -120,8 +124,13 @@ impl SaveContentSettingsRequest {
         Ok(Self {
             theme_topic,
             style_notes,
+            review_mode_enabled: self.review_mode_enabled,
         })
     }
+}
+
+fn default_review_mode_enabled() -> bool {
+    true
 }
 
 impl From<ContentSettings> for ContentSettingsPayload {
@@ -131,6 +140,7 @@ impl From<ContentSettings> for ContentSettingsPayload {
             creator_id: settings.creator_id,
             theme_topic: settings.theme_topic,
             style_notes: settings.style_notes,
+            review_mode_enabled: settings.review_mode_enabled,
             created_at: settings.created_at.to_rfc3339(),
             updated_at: settings.updated_at.to_rfc3339(),
         }
