@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub object_storage: Option<ObjectStorageConfig>,
     pub instagram: Option<InstagramConfig>,
     pub generation: Option<GenerationConfig>,
+    pub stock_images: Option<StockImageConfig>,
 }
 
 #[derive(Clone)]
@@ -73,6 +74,14 @@ pub struct GenerationConfig {
     pub caption_model: String,
 }
 
+#[derive(Clone)]
+pub struct StockImageConfig {
+    pub provider: String,
+    pub api_key: String,
+    pub search_url: String,
+    pub per_page: u8,
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("{key} must be set")]
@@ -88,6 +97,15 @@ pub enum ConfigError {
         #[source]
         source: std::num::ParseIntError,
     },
+    #[error("{key} must be a valid positive integer, got {value:?}")]
+    InvalidNumber {
+        key: &'static str,
+        value: String,
+        #[source]
+        source: std::num::ParseIntError,
+    },
+    #[error("{key} has unsupported value {value:?}")]
+    InvalidValue { key: &'static str, value: String },
     #[error("server address must be valid, got {value:?}")]
     InvalidAddress {
         value: String,
@@ -110,6 +128,7 @@ impl AppConfig {
             object_storage: ObjectStorageConfig::from_env()?,
             instagram: InstagramConfig::from_env()?,
             generation: GenerationConfig::from_env()?,
+            stock_images: StockImageConfig::from_env()?,
         })
     }
 }
@@ -298,6 +317,56 @@ impl GenerationConfig {
             image_quality: image_quality.unwrap_or_else(|| "low".to_owned()),
             image_format: image_format.unwrap_or_else(|| "png".to_owned()),
             caption_model: caption_model.unwrap_or_else(|| "gpt-4.1-mini".to_owned()),
+        }))
+    }
+}
+
+impl StockImageConfig {
+    fn from_env() -> Result<Option<Self>, ConfigError> {
+        let provider = optional_env("STOCK_IMAGE_PROVIDER");
+        let api_key = optional_env("PEXELS_API_KEY");
+        let search_url = optional_env("PEXELS_SEARCH_URL");
+        let per_page = optional_env("STOCK_IMAGE_PER_PAGE");
+
+        let any_stock_value = provider.is_some()
+            || api_key.is_some()
+            || search_url.is_some()
+            || per_page.is_some();
+
+        if !any_stock_value {
+            return Ok(None);
+        }
+
+        if api_key.is_none() {
+            return Err(ConfigError::IncompleteGroup {
+                group: "stock images",
+                missing: vec!["PEXELS_API_KEY"],
+            });
+        }
+
+        let provider = provider.unwrap_or_else(|| "pexels".to_owned());
+        if provider != "pexels" {
+            return Err(ConfigError::InvalidValue {
+                key: "STOCK_IMAGE_PROVIDER",
+                value: provider,
+            });
+        }
+
+        let per_page = match per_page {
+            Some(value) => value.parse::<u8>().map_err(|source| ConfigError::InvalidNumber {
+                key: "STOCK_IMAGE_PER_PAGE",
+                value,
+                source,
+            })?,
+            None => 10,
+        };
+
+        Ok(Some(Self {
+            provider,
+            api_key: api_key.unwrap_or_default(),
+            search_url: search_url
+                .unwrap_or_else(|| "https://api.pexels.com/v1/search".to_owned()),
+            per_page: per_page.clamp(1, 20),
         }))
     }
 }
