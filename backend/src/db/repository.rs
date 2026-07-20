@@ -587,6 +587,78 @@ impl CoreRepository {
         .await
     }
 
+    pub async fn get_generated_post_for_creator(
+        &self,
+        creator_id: Uuid,
+        post_id: Uuid,
+    ) -> Result<Option<GeneratedPost>, sqlx::Error> {
+        sqlx::query_as::<_, GeneratedPost>(
+            r#"
+            SELECT
+                id,
+                creator_id,
+                instagram_account_id,
+                media_asset_id,
+                image_reference,
+                header_text,
+                paragraph_text,
+                caption,
+                status,
+                scheduled_at,
+                published_at,
+                failed_at,
+                failure_message,
+                created_at,
+                updated_at
+            FROM generated_posts
+            WHERE creator_id = $1
+              AND id = $2
+            "#,
+        )
+        .bind(creator_id)
+        .bind(post_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn attach_media_asset_to_post(
+        &self,
+        creator_id: Uuid,
+        post_id: Uuid,
+        media_asset_id: Uuid,
+    ) -> Result<Option<GeneratedPost>, sqlx::Error> {
+        sqlx::query_as::<_, GeneratedPost>(
+            r#"
+            UPDATE generated_posts
+            SET media_asset_id = $3,
+                updated_at = NOW()
+            WHERE creator_id = $1
+              AND id = $2
+            RETURNING
+                id,
+                creator_id,
+                instagram_account_id,
+                media_asset_id,
+                image_reference,
+                header_text,
+                paragraph_text,
+                caption,
+                status,
+                scheduled_at,
+                published_at,
+                failed_at,
+                failure_message,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(creator_id)
+        .bind(post_id)
+        .bind(media_asset_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn upsert_posting_schedule(
         &self,
         schedule: NewPostingSchedule<'_>,

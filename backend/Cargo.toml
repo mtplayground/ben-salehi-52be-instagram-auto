@@ -8,6 +8,9 @@ rust-version.workspace = true
 [dependencies]
 axum = "0.7"
 aes-gcm = "0.10"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-credential-types = "1"
+aws-sdk-s3 = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9"

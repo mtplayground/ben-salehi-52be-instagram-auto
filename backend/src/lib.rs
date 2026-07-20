@@ -9,6 +9,7 @@ pub mod instagram;
 pub mod routes;
 pub mod settings;
 pub mod stock;
+pub mod storage;
 
 use std::{path::PathBuf, sync::Arc};
 
