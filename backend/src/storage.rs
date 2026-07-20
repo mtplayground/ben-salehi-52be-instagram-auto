@@ -42,6 +42,17 @@ struct StoreFinishedImageRequest {
     post_id: Option<Uuid>,
 }
 
+#[derive(Debug)]
+pub struct StoreFinishedImageInput {
+    pub image_base64: String,
+    pub mime_type: String,
+    pub source: Option<String>,
+    pub license: Option<String>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub post_id: Option<Uuid>,
+}
+
 #[derive(Debug, Serialize)]
 struct StoreFinishedImageResponse {
     media: MediaAssetPayload,
@@ -112,12 +123,26 @@ async fn store_finished_image(
     Json(request): Json<StoreFinishedImageRequest>,
 ) -> Result<Json<StoreFinishedImageResponse>, StorageError> {
     let creator = state.auth.current_creator(&headers).await?;
-    let image = request.validate()?;
+    let (media, post) =
+        store_finished_image_for_creator(&state, creator.creator.id, request.into()).await?;
+
+    Ok(Json(StoreFinishedImageResponse {
+        media: media.into(),
+        post: post.map(GeneratedPostPayload::from),
+    }))
+}
+
+pub async fn store_finished_image_for_creator(
+    state: &AppState,
+    creator_id: Uuid,
+    input: StoreFinishedImageInput,
+) -> Result<(MediaAsset, Option<GeneratedPost>), StorageError> {
+    let image = input.validate()?;
 
     if let Some(post_id) = image.post_id {
         state
             .repository
-            .get_generated_post_for_creator(creator.creator.id, post_id)
+            .get_generated_post_for_creator(creator_id, post_id)
             .await?
             .ok_or(StorageError::PostNotFound)?;
     }
@@ -134,13 +159,13 @@ async fn store_finished_image(
 
     let storage = object_storage_client(&state)?;
     let stored = storage
-        .put_finished_image(creator.creator.id, bytes, mime_type.as_str())
+        .put_finished_image(creator_id, bytes, mime_type.as_str())
         .await?;
 
     let media = state
         .repository
         .create_media_asset(NewMediaAsset {
-            creator_id: creator.creator.id,
+            creator_id,
             storage_key: &stored.key,
             public_url: Some(&stored.public_url),
             source: &source,
@@ -154,19 +179,31 @@ async fn store_finished_image(
     let post = match post_id {
         Some(post_id) => state
             .repository
-            .attach_media_asset_to_post(creator.creator.id, post_id, media.id)
+            .attach_media_asset_to_post(creator_id, post_id, media.id)
             .await?
-            .map(GeneratedPostPayload::from),
+            .map(Some)
+            .ok_or(StorageError::PostNotFound)?,
         None => None,
     };
 
-    Ok(Json(StoreFinishedImageResponse {
-        media: media.into(),
-        post,
-    }))
+    Ok((media, post))
 }
 
-impl StoreFinishedImageRequest {
+impl From<StoreFinishedImageRequest> for StoreFinishedImageInput {
+    fn from(request: StoreFinishedImageRequest) -> Self {
+        Self {
+            image_base64: request.image_base64,
+            mime_type: request.mime_type,
+            source: request.source,
+            license: request.license,
+            width: request.width,
+            height: request.height,
+            post_id: request.post_id,
+        }
+    }
+}
+
+impl StoreFinishedImageInput {
     fn validate(self) -> Result<ValidatedImage, StorageError> {
         let mime_type = self.mime_type.trim().to_owned();
         validate_mime_type(&mime_type)?;
