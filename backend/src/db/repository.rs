@@ -65,6 +65,18 @@ pub struct NewGeneratedPost<'a> {
 }
 
 #[derive(Clone, Debug)]
+pub struct ReviewPostUpdate<'a> {
+    pub creator_id: Uuid,
+    pub post_id: Uuid,
+    pub media_asset_id: Option<Uuid>,
+    pub image_reference: Option<&'a str>,
+    pub header_text: &'a str,
+    pub paragraph_text: &'a str,
+    pub caption: &'a str,
+    pub status: PostStatus,
+}
+
+#[derive(Clone, Debug)]
 pub struct NewPostingSchedule<'a> {
     pub creator_id: Uuid,
     pub timezone: &'a str,
@@ -691,6 +703,90 @@ impl CoreRepository {
         .bind(creator_id)
         .bind(post_id)
         .bind(media_asset_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn update_generated_post_status(
+        &self,
+        creator_id: Uuid,
+        post_id: Uuid,
+        status: PostStatus,
+    ) -> Result<Option<GeneratedPost>, sqlx::Error> {
+        sqlx::query_as::<_, GeneratedPost>(
+            r#"
+            UPDATE generated_posts
+            SET status = $3,
+                updated_at = NOW()
+            WHERE creator_id = $1
+              AND id = $2
+            RETURNING
+                id,
+                creator_id,
+                instagram_account_id,
+                media_asset_id,
+                image_reference,
+                header_text,
+                paragraph_text,
+                caption,
+                status,
+                scheduled_at,
+                published_at,
+                failed_at,
+                failure_message,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(creator_id)
+        .bind(post_id)
+        .bind(status)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn update_generated_post_review(
+        &self,
+        update: ReviewPostUpdate<'_>,
+    ) -> Result<Option<GeneratedPost>, sqlx::Error> {
+        sqlx::query_as::<_, GeneratedPost>(
+            r#"
+            UPDATE generated_posts
+            SET media_asset_id = COALESCE($3, media_asset_id),
+                image_reference = COALESCE($4, image_reference),
+                header_text = $5,
+                paragraph_text = $6,
+                caption = $7,
+                status = $8,
+                updated_at = NOW()
+            WHERE creator_id = $1
+              AND id = $2
+            RETURNING
+                id,
+                creator_id,
+                instagram_account_id,
+                media_asset_id,
+                image_reference,
+                header_text,
+                paragraph_text,
+                caption,
+                status,
+                scheduled_at,
+                published_at,
+                failed_at,
+                failure_message,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(update.creator_id)
+        .bind(update.post_id)
+        .bind(update.media_asset_id)
+        .bind(update.image_reference)
+        .bind(update.header_text)
+        .bind(update.paragraph_text)
+        .bind(update.caption)
+        .bind(update.status)
         .fetch_optional(&self.pool)
         .await
     }
