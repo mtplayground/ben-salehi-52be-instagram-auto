@@ -4,7 +4,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use super::models::{
-    Creator, GeneratedPost, InstagramAccount, MediaAsset, PostQueueEntry, PostStatus,
+    Creator, GeneratedPost, InstagramAccount, MediaAsset, PostQueueEntry, PostStatus, User,
     PostingSchedule,
 };
 
@@ -74,6 +74,34 @@ pub struct NewPostQueueEntry {
     pub queue_position: i32,
 }
 
+#[derive(Clone, Debug)]
+pub struct NewAuthenticatedCreator<'a> {
+    pub sub: &'a str,
+    pub email: &'a str,
+    pub email_verified: bool,
+    pub name: Option<&'a str>,
+    pub picture_url: Option<&'a str>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AuthenticatedCreator {
+    pub user: User,
+    pub creator: Creator,
+    pub is_new_registration: bool,
+}
+
+#[derive(sqlx::FromRow)]
+struct UpsertedUser {
+    sub: String,
+    email: String,
+    name: Option<String>,
+    picture_url: Option<String>,
+    email_verified: bool,
+    created_at: DateTime<Utc>,
+    last_seen_at: DateTime<Utc>,
+    is_new_registration: bool,
+}
+
 impl CoreRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -93,7 +121,15 @@ impl CoreRepository {
                 display_name = EXCLUDED.display_name,
                 avatar_url = EXCLUDED.avatar_url,
                 updated_at = NOW()
-            RETURNING id, auth_subject, email, display_name, avatar_url, created_at, updated_at
+            RETURNING
+                id,
+                auth_subject,
+                user_sub,
+                email,
+                display_name,
+                avatar_url,
+                created_at,
+                updated_at
             "#,
         )
         .bind(creator.auth_subject)
@@ -107,7 +143,15 @@ impl CoreRepository {
     pub async fn get_creator(&self, creator_id: Uuid) -> Result<Option<Creator>, sqlx::Error> {
         sqlx::query_as::<_, Creator>(
             r#"
-            SELECT id, auth_subject, email, display_name, avatar_url, created_at, updated_at
+            SELECT
+                id,
+                auth_subject,
+                user_sub,
+                email,
+                display_name,
+                avatar_url,
+                created_at,
+                updated_at
             FROM creators
             WHERE id = $1
             "#,
@@ -115,6 +159,30 @@ impl CoreRepository {
         .bind(creator_id)
         .fetch_optional(&self.pool)
         .await
+    }
+
+    pub async fn upsert_authenticated_creator(
+        &self,
+        creator: NewAuthenticatedCreator<'_>,
+    ) -> Result<AuthenticatedCreator, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let user = upsert_user_in_tx(&mut tx, &creator).await?;
+        let creator_record = upsert_creator_for_user_in_tx(&mut tx, &creator).await?;
+        tx.commit().await?;
+
+        Ok(AuthenticatedCreator {
+            is_new_registration: user.is_new_registration,
+            user: User {
+                sub: user.sub,
+                email: user.email,
+                name: user.name,
+                picture_url: user.picture_url,
+                email_verified: user.email_verified,
+                created_at: user.created_at,
+                last_seen_at: user.last_seen_at,
+            },
+            creator: creator_record,
+        })
     }
 
     pub async fn upsert_instagram_account(
@@ -338,6 +406,73 @@ impl CoreRepository {
         .fetch_all(&self.pool)
         .await
     }
+}
+
+async fn upsert_user_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    creator: &NewAuthenticatedCreator<'_>,
+) -> Result<UpsertedUser, sqlx::Error> {
+    sqlx::query_as::<_, UpsertedUser>(
+        r#"
+        INSERT INTO users (sub, email, name, picture_url, email_verified)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (sub) DO UPDATE
+        SET email = EXCLUDED.email,
+            name = EXCLUDED.name,
+            picture_url = EXCLUDED.picture_url,
+            email_verified = EXCLUDED.email_verified,
+            last_seen_at = NOW()
+        RETURNING
+            sub,
+            email,
+            name,
+            picture_url,
+            email_verified,
+            created_at,
+            last_seen_at,
+            (xmax = 0) AS is_new_registration
+        "#,
+    )
+    .bind(creator.sub)
+    .bind(creator.email)
+    .bind(creator.name)
+    .bind(creator.picture_url)
+    .bind(creator.email_verified)
+    .fetch_one(&mut **tx)
+    .await
+}
+
+async fn upsert_creator_for_user_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    creator: &NewAuthenticatedCreator<'_>,
+) -> Result<Creator, sqlx::Error> {
+    sqlx::query_as::<_, Creator>(
+        r#"
+        INSERT INTO creators (auth_subject, user_sub, email, display_name, avatar_url)
+        VALUES ($1, $1, $2, $3, $4)
+        ON CONFLICT (auth_subject) DO UPDATE
+        SET user_sub = EXCLUDED.user_sub,
+            email = EXCLUDED.email,
+            display_name = EXCLUDED.display_name,
+            avatar_url = EXCLUDED.avatar_url,
+            updated_at = NOW()
+        RETURNING
+            id,
+            auth_subject,
+            user_sub,
+            email,
+            display_name,
+            avatar_url,
+            created_at,
+            updated_at
+        "#,
+    )
+    .bind(creator.sub)
+    .bind(creator.email)
+    .bind(creator.name)
+    .bind(creator.picture_url)
+    .fetch_one(&mut **tx)
+    .await
 }
 
 async fn enqueue_post_in_tx(
