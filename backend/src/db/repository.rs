@@ -115,6 +115,9 @@ pub struct QueueCalendarPost {
     pub published_at: Option<DateTime<Utc>>,
     pub failed_at: Option<DateTime<Utc>>,
     pub failure_message: Option<String>,
+    pub publish_retry_count: i32,
+    pub last_publish_attempt_at: Option<DateTime<Utc>>,
+    pub next_retry_at: Option<DateTime<Utc>>,
     pub queue_position: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -128,6 +131,7 @@ pub struct PublishablePost {
     pub media_url: String,
     pub caption: String,
     pub scheduled_for: DateTime<Utc>,
+    pub publish_retry_count: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -727,6 +731,11 @@ impl CoreRepository {
             r#"
             UPDATE generated_posts
             SET status = $3,
+                failed_at = NULL,
+                failure_message = NULL,
+                publish_retry_count = 0,
+                last_publish_attempt_at = NULL,
+                next_retry_at = NULL,
                 updated_at = NOW()
             WHERE creator_id = $1
               AND id = $2
@@ -768,6 +777,11 @@ impl CoreRepository {
                 paragraph_text = $6,
                 caption = $7,
                 status = $8,
+                failed_at = NULL,
+                failure_message = NULL,
+                publish_retry_count = 0,
+                last_publish_attempt_at = NULL,
+                next_retry_at = NULL,
                 updated_at = NOW()
             WHERE creator_id = $1
               AND id = $2
@@ -1014,6 +1028,9 @@ impl CoreRepository {
                 posts.published_at,
                 posts.failed_at,
                 posts.failure_message,
+                posts.publish_retry_count,
+                posts.last_publish_attempt_at,
+                posts.next_retry_at,
                 queue.queue_position,
                 posts.created_at,
                 posts.updated_at
@@ -1049,7 +1066,8 @@ impl CoreRepository {
                 posts.id AS post_id,
                 media.public_url AS media_url,
                 posts.caption,
-                queue.scheduled_for
+                queue.scheduled_for,
+                posts.publish_retry_count
             FROM post_queue_entries queue
             JOIN generated_posts posts
                 ON posts.id = queue.post_id
@@ -1058,7 +1076,14 @@ impl CoreRepository {
                 ON media.id = posts.media_asset_id
                AND media.creator_id = posts.creator_id
             WHERE queue.scheduled_for <= $1
-              AND posts.status IN ('approved', 'scheduled')
+              AND (
+                    posts.status IN ('approved', 'scheduled')
+                    OR (
+                        posts.status = 'failed'
+                        AND posts.next_retry_at IS NOT NULL
+                        AND posts.next_retry_at <= $1
+                    )
+                  )
               AND media.public_url IS NOT NULL
               AND (queue.locked_at IS NULL OR queue.locked_at < $1 - INTERVAL '10 minutes')
             ORDER BY queue.scheduled_for ASC, queue.queue_position ASC
@@ -1103,6 +1128,9 @@ impl CoreRepository {
                 published_at = NOW(),
                 failed_at = NULL,
                 failure_message = NULL,
+                publish_retry_count = 0,
+                last_publish_attempt_at = NOW(),
+                next_retry_at = NULL,
                 updated_at = NOW()
             WHERE creator_id = $1
               AND id = $2
@@ -1136,6 +1164,7 @@ impl CoreRepository {
         creator_id: Uuid,
         post_id: Uuid,
         failure_message: &str,
+        next_retry_at: Option<DateTime<Utc>>,
     ) -> Result<Option<GeneratedPost>, sqlx::Error> {
         sqlx::query_as::<_, GeneratedPost>(
             r#"
@@ -1143,6 +1172,9 @@ impl CoreRepository {
             SET status = 'failed',
                 failed_at = NOW(),
                 failure_message = $3,
+                publish_retry_count = publish_retry_count + 1,
+                last_publish_attempt_at = NOW(),
+                next_retry_at = $4,
                 updated_at = NOW()
             WHERE creator_id = $1
               AND id = $2
@@ -1167,8 +1199,25 @@ impl CoreRepository {
         .bind(creator_id)
         .bind(post_id)
         .bind(failure_message)
+        .bind(next_retry_at)
         .fetch_optional(&self.pool)
         .await
+    }
+
+    pub async fn unlock_queue_entry(&self, queue_id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE post_queue_entries
+            SET locked_at = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(queue_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }
 

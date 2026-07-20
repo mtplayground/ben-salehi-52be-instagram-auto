@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Clock3,
   Edit3,
+  AlertTriangle,
   ImageOff,
   ListChecks,
   MessageSquareText,
@@ -159,7 +160,8 @@ function PostCard({
 }) {
   const date = displayDate(post);
   const past = isPastPost(post, now);
-  const status = statusMeta(post.status);
+  const retrying = post.status === 'failed' && Boolean(post.next_retry_at);
+  const status = statusMeta(post.status, retrying);
   const StatusIcon = status.icon;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({
@@ -169,7 +171,7 @@ function PostCard({
   });
   const [working, setWorking] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const canReview = post.status !== 'published' && post.status !== 'failed';
+  const canReview = post.status !== 'published' && !retrying;
 
   async function runAction(label: string, action: () => Promise<void>) {
     setWorking(label);
@@ -281,7 +283,23 @@ function PostCard({
 
           {post.failure_message ? (
             <div className="mt-4 rounded-md border border-coral/30 bg-coral/10 px-3 py-2 text-sm text-ink">
-              {post.failure_message}
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 shrink-0 text-coral" size={16} aria-hidden="true" />
+                <div>
+                  <p>{post.failure_message}</p>
+                  {post.next_retry_at ? (
+                    <p className="mt-1 text-xs font-semibold text-coral">
+                      Retry {post.publish_retry_count + 1} of 3 is scheduled for{' '}
+                      {formatDateTime(post.next_retry_at)}.
+                    </p>
+                  ) : post.status === 'failed' ? (
+                    <p className="mt-1 text-xs font-semibold text-coral">
+                      Publishing stopped after {post.publish_retry_count} failed attempt
+                      {post.publish_retry_count === 1 ? '' : 's'}.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -361,6 +379,7 @@ function PostCard({
           <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
             <MetaRow label="Queue slot" value={post.queue_position === null ? 'None' : String(post.queue_position)} />
             <MetaRow label="Image source" value={post.image_source ?? 'None'} />
+            <MetaRow label="Publish attempts" value={String(post.publish_retry_count)} />
             <MetaRow label="Updated" value={formatDateTime(post.updated_at)} />
           </dl>
         </div>
@@ -435,7 +454,15 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function statusMeta(status: QueuePost['status']) {
+function statusMeta(status: QueuePost['status'], retrying = false) {
+  if (retrying) {
+    return {
+      label: 'Retrying',
+      icon: RefreshCw,
+      className: 'bg-amber-100 text-amber-700',
+    };
+  }
+
   switch (status) {
     case 'published':
       return {
@@ -444,9 +471,14 @@ function statusMeta(status: QueuePost['status']) {
         className: 'bg-meadow/12 text-meadow',
       };
     case 'failed':
+      return {
+        label: 'Failed',
+        icon: XCircle,
+        className: 'bg-coral/12 text-coral',
+      };
     case 'rejected':
       return {
-        label: status === 'failed' ? 'Failed' : 'Rejected',
+        label: 'Rejected',
         icon: XCircle,
         className: 'bg-coral/12 text-coral',
       };
