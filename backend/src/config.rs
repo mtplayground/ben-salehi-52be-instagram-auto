@@ -67,6 +67,7 @@ pub struct InstagramConfig {
 pub struct GenerationConfig {
     pub openai_api_key: String,
     pub image_generation_url: String,
+    pub caption_generation_url: String,
     pub image_model: String,
     pub image_size: String,
     pub image_quality: String,
@@ -284,6 +285,7 @@ impl GenerationConfig {
     fn from_env() -> Result<Option<Self>, ConfigError> {
         let api_key = optional_env("OPENAI_API_KEY");
         let image_generation_url = optional_env("OPENAI_IMAGE_GENERATION_URL");
+        let caption_generation_url = optional_env("OPENAI_CAPTION_GENERATION_URL");
         let image_model = optional_env("IMAGE_GENERATION_MODEL");
         let image_size = optional_env("IMAGE_GENERATION_SIZE");
         let image_quality = optional_env("IMAGE_GENERATION_QUALITY");
@@ -292,6 +294,7 @@ impl GenerationConfig {
 
         if api_key.is_none()
             && (image_generation_url.is_some()
+                || caption_generation_url.is_some()
                 || image_model.is_some()
                 || image_size.is_some()
                 || image_quality.is_some()
@@ -312,6 +315,8 @@ impl GenerationConfig {
             openai_api_key,
             image_generation_url: image_generation_url
                 .unwrap_or_else(|| "https://api.openai.com/v1/images/generations".to_owned()),
+            caption_generation_url: caption_generation_url
+                .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_owned()),
             image_model: image_model.unwrap_or_else(|| "gpt-image-1-mini".to_owned()),
             image_size: image_size.unwrap_or_else(|| "1024x1024".to_owned()),
             image_quality: image_quality.unwrap_or_else(|| "low".to_owned()),
