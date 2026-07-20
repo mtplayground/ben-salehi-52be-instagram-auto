@@ -1,5 +1,6 @@
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use serde::Deserialize;
+use serde_json::Value;
 use thiserror::Error;
 use tokio::{task::JoinHandle, time::MissedTickBehavior};
 
@@ -12,6 +13,7 @@ use crate::{
 const WORKER_INTERVAL_SECONDS: u64 = 30;
 const PUBLISH_BATCH_LIMIT: i64 = 10;
 const GRAPH_BASE_URL: &str = "https://graph.facebook.com/v21.0";
+const MAX_PUBLISH_ATTEMPTS: i32 = 3;
 
 #[derive(Debug, Default)]
 pub struct PublishWorkerReport {
@@ -28,7 +30,14 @@ pub enum PublishError {
     #[error("Instagram credential failed: {0}")]
     Instagram(#[from] InstagramError),
     #[error("Instagram publishing failed: {0}")]
-    Publish(String),
+    Publish(InstagramPublishError),
+}
+
+#[derive(Debug, Error)]
+#[error("{message}")]
+pub struct InstagramPublishError {
+    message: String,
+    transient: bool,
 }
 
 #[derive(Clone)]
@@ -122,8 +131,10 @@ async fn publish_due_post(
                 post.creator_id,
                 post.post_id,
                 "Instagram account needs to be connected before publishing.",
+                None,
             )
             .await?;
+        state.repository.unlock_queue_entry(post.queue_id).await?;
         return Ok(PublishOutcome::Skipped);
     };
 
@@ -151,13 +162,39 @@ async fn publish_due_post(
         }
         Err(error) => {
             let message = error.to_string();
+            let next_retry_at = retry_after(&error, post.publish_retry_count);
             state
                 .repository
-                .mark_generated_post_failed(post.creator_id, post.post_id, &message)
+                .mark_generated_post_failed(
+                    post.creator_id,
+                    post.post_id,
+                    &message,
+                    next_retry_at,
+                )
                 .await?;
+            state.repository.unlock_queue_entry(post.queue_id).await?;
             Err(error)
         }
     }
+}
+
+fn retry_after(error: &PublishError, current_retry_count: i32) -> Option<chrono::DateTime<Utc>> {
+    let publish_error = match error {
+        PublishError::Publish(error) => error,
+        _ => return None,
+    };
+
+    if !publish_error.transient || current_retry_count + 1 >= MAX_PUBLISH_ATTEMPTS {
+        return None;
+    }
+
+    let delay = match current_retry_count {
+        0 => Duration::minutes(2),
+        1 => Duration::minutes(10),
+        _ => Duration::minutes(30),
+    };
+
+    Some(Utc::now() + delay)
 }
 
 impl InstagramPublisher {
@@ -185,7 +222,9 @@ impl InstagramPublisher {
             ])
             .send()
             .await
-            .map_err(|error| PublishError::Publish(error.to_string()))?;
+            .map_err(|error| {
+                PublishError::Publish(InstagramPublishError::transient(error.to_string()))
+            })?;
         let container = parse_instagram_response::<MediaContainerResponse>(container).await?;
         let publish_url = format!("{GRAPH_BASE_URL}/{instagram_user_id}/media_publish");
         let published = self
@@ -197,7 +236,9 @@ impl InstagramPublisher {
             ])
             .send()
             .await
-            .map_err(|error| PublishError::Publish(error.to_string()))?;
+            .map_err(|error| {
+                PublishError::Publish(InstagramPublishError::transient(error.to_string()))
+            })?;
         let published = parse_instagram_response::<MediaPublishResponse>(published).await?;
 
         Ok(published.id)
@@ -212,13 +253,51 @@ where
     let body = response
         .text()
         .await
-        .map_err(|error| PublishError::Publish(error.to_string()))?;
+        .map_err(|error| {
+            PublishError::Publish(InstagramPublishError::transient(error.to_string()))
+        })?;
 
     if !status.is_success() {
-        return Err(PublishError::Publish(format!(
-            "Instagram API returned {status}: {body}"
-        )));
+        let message = instagram_error_message(status, &body);
+        let transient = status.is_server_error()
+            || status.as_u16() == 408
+            || status.as_u16() == 409
+            || status.as_u16() == 425
+            || status.as_u16() == 429;
+        return Err(PublishError::Publish(InstagramPublishError { message, transient }));
     }
 
-    serde_json::from_str(&body).map_err(|error| PublishError::Publish(error.to_string()))
+    serde_json::from_str(&body)
+        .map_err(|error| PublishError::Publish(InstagramPublishError::permanent(error.to_string())))
+}
+
+fn instagram_error_message(status: reqwest::StatusCode, body: &str) -> String {
+    let detail = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| value.get("error").cloned())
+        .and_then(|value| {
+            value
+                .get("message")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| body.to_owned());
+
+    format!("Instagram API returned {status}: {detail}")
+}
+
+impl InstagramPublishError {
+    fn transient(message: String) -> Self {
+        Self {
+            message,
+            transient: true,
+        }
+    }
+
+    fn permanent(message: String) -> Self {
+        Self {
+            message,
+            transient: false,
+        }
+    }
 }

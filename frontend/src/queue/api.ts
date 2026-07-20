@@ -27,6 +27,9 @@ export interface QueuePost {
   published_at: string | null;
   failed_at: string | null;
   failure_message: string | null;
+  publish_retry_count: number;
+  last_publish_attempt_at: string | null;
+  next_retry_at: string | null;
   queue_position: number | null;
   created_at: string;
   updated_at: string;
