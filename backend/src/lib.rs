@@ -7,6 +7,7 @@ pub mod error;
 pub mod generation;
 pub mod instagram;
 pub mod routes;
+pub mod schedule;
 pub mod settings;
 pub mod stock;
 pub mod storage;
