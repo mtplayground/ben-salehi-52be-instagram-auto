@@ -120,6 +120,16 @@ pub struct QueueCalendarPost {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Clone, Debug, sqlx::FromRow)]
+pub struct PublishablePost {
+    pub queue_id: Uuid,
+    pub creator_id: Uuid,
+    pub post_id: Uuid,
+    pub media_url: String,
+    pub caption: String,
+    pub scheduled_for: DateTime<Utc>,
+}
+
 #[derive(Clone, Debug)]
 pub struct NewContentSettings<'a> {
     pub creator_id: Uuid,
@@ -1023,6 +1033,141 @@ impl CoreRepository {
         )
         .bind(creator_id)
         .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn list_due_publishable_posts(
+        &self,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<PublishablePost>, sqlx::Error> {
+        sqlx::query_as::<_, PublishablePost>(
+            r#"
+            SELECT
+                queue.id AS queue_id,
+                posts.creator_id,
+                posts.id AS post_id,
+                media.public_url AS media_url,
+                posts.caption,
+                queue.scheduled_for
+            FROM post_queue_entries queue
+            JOIN generated_posts posts
+                ON posts.id = queue.post_id
+               AND posts.creator_id = queue.creator_id
+            JOIN media_assets media
+                ON media.id = posts.media_asset_id
+               AND media.creator_id = posts.creator_id
+            WHERE queue.scheduled_for <= $1
+              AND posts.status IN ('approved', 'scheduled')
+              AND media.public_url IS NOT NULL
+              AND (queue.locked_at IS NULL OR queue.locked_at < $1 - INTERVAL '10 minutes')
+            ORDER BY queue.scheduled_for ASC, queue.queue_position ASC
+            LIMIT $2
+            "#,
+        )
+        .bind(now)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn lock_queue_entry(&self, queue_id: Uuid) -> Result<bool, sqlx::Error> {
+        let changed = sqlx::query(
+            r#"
+            UPDATE post_queue_entries
+            SET locked_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+              AND (locked_at IS NULL OR locked_at < NOW() - INTERVAL '10 minutes')
+            "#,
+        )
+        .bind(queue_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+
+        Ok(changed == 1)
+    }
+
+    pub async fn mark_generated_post_published(
+        &self,
+        creator_id: Uuid,
+        post_id: Uuid,
+        instagram_account_id: Uuid,
+    ) -> Result<Option<GeneratedPost>, sqlx::Error> {
+        sqlx::query_as::<_, GeneratedPost>(
+            r#"
+            UPDATE generated_posts
+            SET status = 'published',
+                instagram_account_id = $3,
+                published_at = NOW(),
+                failed_at = NULL,
+                failure_message = NULL,
+                updated_at = NOW()
+            WHERE creator_id = $1
+              AND id = $2
+            RETURNING
+                id,
+                creator_id,
+                instagram_account_id,
+                media_asset_id,
+                image_reference,
+                header_text,
+                paragraph_text,
+                caption,
+                status,
+                scheduled_at,
+                published_at,
+                failed_at,
+                failure_message,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(creator_id)
+        .bind(post_id)
+        .bind(instagram_account_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn mark_generated_post_failed(
+        &self,
+        creator_id: Uuid,
+        post_id: Uuid,
+        failure_message: &str,
+    ) -> Result<Option<GeneratedPost>, sqlx::Error> {
+        sqlx::query_as::<_, GeneratedPost>(
+            r#"
+            UPDATE generated_posts
+            SET status = 'failed',
+                failed_at = NOW(),
+                failure_message = $3,
+                updated_at = NOW()
+            WHERE creator_id = $1
+              AND id = $2
+            RETURNING
+                id,
+                creator_id,
+                instagram_account_id,
+                media_asset_id,
+                image_reference,
+                header_text,
+                paragraph_text,
+                caption,
+                status,
+                scheduled_at,
+                published_at,
+                failed_at,
+                failure_message,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(creator_id)
+        .bind(post_id)
+        .bind(failure_message)
+        .fetch_optional(&self.pool)
         .await
     }
 }

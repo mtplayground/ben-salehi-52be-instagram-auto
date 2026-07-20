@@ -7,6 +7,7 @@ pub mod error;
 pub mod generation;
 pub mod instagram;
 pub mod pipeline_worker;
+pub mod publish_worker;
 pub mod queue;
 pub mod review;
 pub mod routes;
