@@ -1,7 +1,12 @@
 use std::net::SocketAddr;
 
 use axum::Router;
-use instagram_auto_backend::{build_app, config::AppConfig};
+use instagram_auto_backend::{
+    build_app,
+    config::AppConfig,
+    db::{connect, repository::CoreRepository, run_migrations},
+    AppState,
+};
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -18,7 +23,11 @@ async fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = AppConfig::from_env()?;
     let addr = config.server.socket_addr()?;
-    let app = build_app();
+    let pool = connect(&config.database).await?;
+    run_migrations(&pool).await?;
+    let repository = CoreRepository::new(pool);
+    let state = AppState::new(config, repository)?;
+    let app = build_app(state);
     serve(app, addr).await
 }
 

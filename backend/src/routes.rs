@@ -1,7 +1,7 @@
 use axum::{routing::get, Json, Router};
 use serde::Serialize;
 
-use crate::error::AppError;
+use crate::{auth, error::AppError, AppState};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -9,8 +9,9 @@ struct HealthResponse {
     service: &'static str,
 }
 
-pub fn api_router() -> Router {
+pub fn api_router() -> Router<AppState> {
     Router::new()
+        .nest("/auth", auth::routes())
         .route("/health", get(health))
         .fallback(api_not_found)
 }

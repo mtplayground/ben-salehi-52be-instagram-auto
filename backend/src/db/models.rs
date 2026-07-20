@@ -5,9 +5,21 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
+pub struct User {
+    pub sub: String,
+    pub email: String,
+    pub name: Option<String>,
+    pub picture_url: Option<String>,
+    pub email_verified: bool,
+    pub created_at: DateTime<Utc>,
+    pub last_seen_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
 pub struct Creator {
     pub id: Uuid,
     pub auth_subject: String,
+    pub user_sub: Option<String>,
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
