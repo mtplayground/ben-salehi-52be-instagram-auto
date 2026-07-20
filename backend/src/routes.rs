@@ -2,8 +2,8 @@ use axum::{routing::get, Json, Router};
 use serde::Serialize;
 
 use crate::{
-    auth, compositor, error::AppError, generation, instagram, schedule, settings, stock, storage,
-    AppState,
+    auth, compositor, error::AppError, generation, instagram, queue, schedule, settings, stock,
+    storage, AppState,
 };
 
 #[derive(Serialize)]
@@ -18,6 +18,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/compositor", compositor::routes())
         .nest("/generation", generation::routes())
         .nest("/instagram", instagram::routes())
+        .nest("/queue", queue::routes())
         .nest("/schedule", schedule::routes())
         .nest("/settings", settings::routes())
         .nest("/stock", stock::routes())
