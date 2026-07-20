@@ -1,16 +1,8 @@
-mod config;
-mod error;
-mod routes;
-
-use std::{net::SocketAddr, path::PathBuf};
+use std::net::SocketAddr;
 
 use axum::Router;
-use config::AppConfig;
+use instagram_auto_backend::{build_app, config::AppConfig};
 use tokio::net::TcpListener;
-use tower_http::{
-    services::{ServeDir, ServeFile},
-    trace::TraceLayer,
-};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
@@ -30,16 +22,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     serve(app, addr).await
 }
 
-fn build_app() -> Router {
-    let frontend_dist = frontend_dist_path();
-    let index_file = frontend_dist.join("index.html");
-
-    Router::new()
-        .nest("/api", routes::api_router())
-        .fallback_service(ServeDir::new(frontend_dist).not_found_service(ServeFile::new(index_file)))
-        .layer(TraceLayer::new_for_http())
-}
-
 async fn serve(
     app: Router,
     addr: SocketAddr,
@@ -52,10 +34,6 @@ async fn serve(
         .await?;
 
     Ok(())
-}
-
-fn frontend_dist_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist")
 }
 
 fn init_tracing() {
