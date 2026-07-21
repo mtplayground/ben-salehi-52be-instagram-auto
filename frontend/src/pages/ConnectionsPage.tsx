@@ -1,4 +1,4 @@
-import { Instagram, Link2, RefreshCw, Unplug } from 'lucide-react';
+import { AlertTriangle, Instagram, Link2, RefreshCw, Unplug } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -89,6 +89,7 @@ export function ConnectionsPage() {
   }
 
   const connected = account?.connection_status === 'connected';
+  const reconnectNeeded = account?.connection_status === 'reconnect-needed';
   const hasAccount = Boolean(account);
   const displayName = account?.username ? `@${account.username}` : account?.instagram_user_id;
 
@@ -158,6 +159,15 @@ export function ConnectionsPage() {
             </div>
           ) : null}
 
+          {reconnectNeeded ? (
+            <div className="mt-5 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
+              <p>
+                Reconnect this Instagram account before the next scheduled publish time.
+              </p>
+            </div>
+          ) : null}
+
           {error ? (
             <div className="mt-5 rounded-md border border-coral/30 bg-coral/10 px-3 py-2 text-sm text-ink">
               {error}
@@ -170,6 +180,7 @@ export function ConnectionsPage() {
           <dl className="mt-5 space-y-4">
             <StatusRow label="State" value={account?.connection_status ?? 'not connected'} />
             <StatusRow label="Account ID" value={account?.instagram_user_id ?? 'Unset'} />
+            <StatusRow label="Creator scope" value="Only this creator can use this connection" />
             <StatusRow
               label="Connected"
               value={account ? formatDate(account.connected_at) : 'Unset'}
