@@ -1,9 +1,9 @@
 import {
+  AlertTriangle,
   CalendarDays,
   CheckCircle2,
   Clock3,
   Edit3,
-  AlertTriangle,
   ImageOff,
   ListChecks,
   MessageSquareText,
@@ -72,8 +72,19 @@ export function QueuePage() {
       </div>
 
       {error ? (
-        <div className="rounded-md border border-coral/30 bg-coral/10 px-3 py-2 text-sm text-ink">
-          {error}
+        <div className="flex flex-col gap-3 rounded-md border border-coral/30 bg-coral/10 px-3 py-3 text-sm text-ink sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 shrink-0 text-coral" size={16} aria-hidden="true" />
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadQueue()}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-coral/25 bg-white px-3 py-2 text-sm font-semibold text-coral"
+          >
+            <RefreshCw size={15} aria-hidden="true" />
+            Retry
+          </button>
         </div>
       ) : null}
 
@@ -90,8 +101,23 @@ export function QueuePage() {
           <CalendarDays className="mx-auto text-sky" size={36} aria-hidden="true" />
           <h3 className="mt-4 text-lg font-semibold">No posts in the queue</h3>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink/65">
-            Saved content settings and an active posting schedule will begin filling this calendar.
+            Add content settings, connect Instagram, and save an active schedule to begin filling
+            this calendar.
           </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <a
+              href="/settings"
+              className="rounded-md bg-meadow px-3 py-2 text-sm font-semibold text-white"
+            >
+              Settings
+            </a>
+            <a
+              href="/connections"
+              className="rounded-md border border-ink/15 bg-white px-3 py-2 text-sm font-semibold text-ink/70"
+            >
+              Connections
+            </a>
+          </div>
         </div>
       ) : (
         <div className="grid gap-5 xl:grid-cols-[280px_1fr]">
@@ -377,7 +403,10 @@ function PostCard({
           ) : null}
 
           <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
-            <MetaRow label="Queue slot" value={post.queue_position === null ? 'None' : String(post.queue_position)} />
+            <MetaRow
+              label="Queue slot"
+              value={post.queue_position === null ? 'None' : String(post.queue_position)}
+            />
             <MetaRow label="Image source" value={post.image_source ?? 'None'} />
             <MetaRow label="Publish attempts" value={String(post.publish_retry_count)} />
             <MetaRow label="Updated" value={formatDateTime(post.updated_at)} />

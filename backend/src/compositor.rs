@@ -171,6 +171,11 @@ impl OverlayTextRequest {
 
 fn render_svg(image_href: &str, header_lines: &[String], paragraph_lines: &[String]) -> String {
     let escaped_href = escape_xml(image_href);
+    let paragraph_line_count = paragraph_lines.len().max(1) as u32;
+    let overlay_height = 244 + paragraph_line_count.saturating_sub(1) * 54;
+    let overlay_y = CANVAS_SIZE - overlay_height - 84;
+    let header_y = overlay_y + 100;
+    let paragraph_y = header_y + 100;
     let header = text_tspans(header_lines, 160, 92);
     let paragraph = text_tspans(paragraph_lines, 160, 54);
 
@@ -179,8 +184,8 @@ fn render_svg(image_href: &str, header_lines: &[String], paragraph_lines: &[Stri
 <defs>
 <linearGradient id="image-vignette" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0%" stop-color="#000" stop-opacity="0.05"/>
-<stop offset="58%" stop-color="#000" stop-opacity="0.08"/>
-<stop offset="100%" stop-color="#000" stop-opacity="0.58"/>
+<stop offset="52%" stop-color="#000" stop-opacity="0.12"/>
+<stop offset="100%" stop-color="#000" stop-opacity="0.68"/>
 </linearGradient>
 <filter id="text-shadow" x="-20%" y="-20%" width="140%" height="140%">
 <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.38"/>
@@ -189,12 +194,17 @@ fn render_svg(image_href: &str, header_lines: &[String], paragraph_lines: &[Stri
 <rect width="{size}" height="{size}" fill="#111827"/>
 <image href="{href}" width="{size}" height="{size}" preserveAspectRatio="xMidYMid slice"/>
 <rect width="{size}" height="{size}" fill="url(#image-vignette)"/>
-<rect x="84" y="642" width="912" height="334" rx="34" fill="#111827" opacity="0.72"/>
-<text x="126" y="742" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="74" font-weight="800" letter-spacing="0" filter="url(#text-shadow)">{header}</text>
-<text x="126" y="842" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="38" font-weight="500" letter-spacing="0" opacity="0.94">{paragraph}</text>
+<rect x="84" y="{overlay_y}" width="912" height="{overlay_height}" rx="34" fill="#111827" opacity="0.78"/>
+<rect x="86" y="{overlay_y}" width="908" height="{overlay_height}" rx="32" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2"/>
+<text x="126" y="{header_y}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="74" font-weight="800" letter-spacing="0" filter="url(#text-shadow)">{header}</text>
+<text x="126" y="{paragraph_y}" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="38" font-weight="500" letter-spacing="0" opacity="0.96">{paragraph}</text>
 </svg>"##,
         size = CANVAS_SIZE,
         href = escaped_href,
+        overlay_y = overlay_y,
+        overlay_height = overlay_height,
+        header_y = header_y,
+        paragraph_y = paragraph_y,
         header = header,
         paragraph = paragraph
     )

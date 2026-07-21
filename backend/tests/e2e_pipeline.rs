@@ -199,6 +199,43 @@ async fn transient_publish_failure_remains_visible_and_retries() -> TestResult {
     Ok(())
 }
 
+#[tokio::test]
+async fn queue_calendar_data_is_isolated_per_creator() -> TestResult {
+    let harness = TestHarness::new("creator-isolation").await?;
+    let first_creator = harness.create_creator().await?;
+    let second_creator = harness.create_creator().await?;
+    harness
+        .save_content_settings(first_creator.id, false)
+        .await?;
+    harness
+        .save_content_settings(second_creator.id, false)
+        .await?;
+    let first_post_id = harness
+        .create_finished_queue_post(first_creator.id, PostStatus::Scheduled)
+        .await?;
+    let second_post_id = harness
+        .create_finished_queue_post(second_creator.id, PostStatus::Scheduled)
+        .await?;
+
+    let first_queue = harness
+        .repository
+        .list_calendar_posts_for_creator(first_creator.id)
+        .await?;
+    let second_queue = harness
+        .repository
+        .list_calendar_posts_for_creator(second_creator.id)
+        .await?;
+
+    assert_eq!(first_queue.len(), 1);
+    assert_eq!(second_queue.len(), 1);
+    assert_eq!(first_queue[0].post_id, first_post_id);
+    assert_eq!(second_queue[0].post_id, second_post_id);
+
+    harness.cleanup_creator(first_creator.id).await?;
+    harness.cleanup_creator(second_creator.id).await?;
+    Ok(())
+}
+
 struct TestHarness {
     repository: CoreRepository,
     pool: PgPool,

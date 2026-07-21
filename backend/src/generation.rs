@@ -118,6 +118,14 @@ pub enum GenerationError {
     MissingCaptionData,
     #[error("generation request failed: {0}")]
     Request(#[from] reqwest::Error),
+    #[error("{operation} provider returned {status}: {message}")]
+    Upstream {
+        operation: &'static str,
+        status: u16,
+        message: String,
+    },
+    #[error("generation provider response could not be read: {0}")]
+    ResponseDecode(#[from] serde_json::Error),
     #[error("database operation failed: {0}")]
     Database(#[from] sqlx::Error),
 }
@@ -288,10 +296,12 @@ impl ImageGenerationClient {
             .bearer_auth(&self.config.openai_api_key)
             .json(&body)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<OpenAIImageResponse>()
             .await?;
+        let response = parse_generation_response::<OpenAIImageResponse>(
+            response,
+            "image generation",
+        )
+        .await?;
 
         let first = response
             .data
@@ -344,10 +354,12 @@ impl CaptionGenerationClient {
             .bearer_auth(&self.config.openai_api_key)
             .json(&body)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<OpenAIChatResponse>()
             .await?;
+        let response = parse_generation_response::<OpenAIChatResponse>(
+            response,
+            "caption generation",
+        )
+        .await?;
 
         let raw_caption = response
             .choices
@@ -449,6 +461,48 @@ fn clean_caption(raw_caption: &str) -> Result<String, GenerationError> {
     Ok(truncated)
 }
 
+async fn parse_generation_response<T>(
+    response: reqwest::Response,
+    operation: &'static str,
+) -> Result<T, GenerationError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let status = response.status();
+    let body = response.text().await?;
+
+    if !status.is_success() {
+        return Err(GenerationError::Upstream {
+            operation,
+            status: status.as_u16(),
+            message: upstream_error_message(&body),
+        });
+    }
+
+    Ok(serde_json::from_str(&body)?)
+}
+
+fn upstream_error_message(body: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| value.get("error").cloned())
+        .and_then(|value| {
+            value
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .or_else(|| value.as_str().map(str::to_owned))
+        })
+        .unwrap_or_else(|| {
+            let trimmed = body.trim();
+            if trimmed.is_empty() {
+                "empty response body".to_owned()
+            } else {
+                trimmed.chars().take(240).collect()
+            }
+        })
+}
+
 fn normalize_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
@@ -501,7 +555,37 @@ impl IntoResponse for GenerationError {
                 tracing::error!(%error, "OpenAI generation request failed");
                 (
                     StatusCode::BAD_GATEWAY,
-                    Json(error_body("Generation failed.".to_owned())),
+                    Json(error_body(
+                        "Generation provider could not be reached. Try again shortly.".to_owned(),
+                    )),
+                )
+                    .into_response()
+            }
+            GenerationError::Upstream {
+                operation,
+                status,
+                message,
+            } => {
+                tracing::warn!(
+                    operation,
+                    status,
+                    message,
+                    "OpenAI generation provider returned an error"
+                );
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(error_body(format!(
+                        "{} is temporarily unavailable. Try again shortly.",
+                        title_case_operation(operation)
+                    ))),
+                )
+                    .into_response()
+            }
+            GenerationError::ResponseDecode(error) => {
+                tracing::error!(%error, "OpenAI generation response could not be decoded");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(error_body("Generation returned an unreadable response.".to_owned())),
                 )
                     .into_response()
             }
@@ -519,4 +603,12 @@ impl IntoResponse for GenerationError {
 
 fn error_body(message: String) -> serde_json::Value {
     serde_json::json!({ "error": message })
+}
+
+fn title_case_operation(operation: &str) -> &'static str {
+    match operation {
+        "image generation" => "Image generation",
+        "caption generation" => "Caption generation",
+        _ => "Generation",
+    }
 }
